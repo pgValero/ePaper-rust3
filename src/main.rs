@@ -1,7 +1,7 @@
+use embedded_svc::http::Headers;
 mod display_interface;
-// mod api;
 
-// use api::API;
+use std::sync::{Arc, Mutex};
 use display_interface::DisplayInterface;
 use esp_idf_svc::hal::delay::Delay;
 use esp_idf_svc::hal::gpio::{Gpio12, Gpio15, PinDriver};
@@ -9,6 +9,42 @@ use esp_idf_svc::hal::prelude::Peripherals;
 use esp_idf_svc::hal::spi::config::{Config, DriverConfig};
 use esp_idf_svc::hal::spi::SpiDeviceDriver;
 
+use esp_idf_svc::eventloop::EspSystemEventLoop;
+use esp_idf_svc::hal::task::block_on;
+use esp_idf_svc::http::Method;
+use esp_idf_svc::http::server::EspHttpServer;
+use esp_idf_svc::io::{Read, Write};
+use esp_idf_svc::nvs::EspDefaultNvsPartition;
+use esp_idf_svc::ping::EspPing;
+use esp_idf_svc::timer::EspTaskTimerService;
+use esp_idf_svc::wifi::{AsyncWifi, AuthMethod, ClientConfiguration, Configuration, EspWifi, PmfConfiguration, ScanMethod};
+use log::info;
+use crate::display_interface::{ImageBuffer, N};
+
+async fn connect_wifi(wifi: &mut AsyncWifi<EspWifi<'static>>, ssid: &str, password: &str) -> anyhow::Result<()> {
+    let wifi_configuration: Configuration = Configuration::Client(ClientConfiguration{
+        ssid: ssid.parse().unwrap(),
+        bssid: None,
+        auth_method: AuthMethod::WPA2Personal,
+        password: password.parse().unwrap(),
+        channel: None,
+        scan_method: ScanMethod::FastScan,
+        pmf_cfg: PmfConfiguration::NotCapable,
+    });
+
+    wifi.set_configuration(&wifi_configuration).expect(" ");
+
+    wifi.start().await?;
+    info!("Wifi started");
+
+    wifi.connect().await?;
+    info!("Wifi connected");
+
+    wifi.wait_netif_up().await?;
+    info!("Wifi netif up");
+
+    Ok(())
+}
 
 const RST_PIN: u8 = 21;
 const DC_PIN: u8 = 19;
@@ -53,27 +89,100 @@ fn main() {
 
     let delay: Delay = Default::default();
 
-    let mut display_interface = DisplayInterface{
+    let black_image: ImageBuffer = vec![0u8; N];
+    let red_image: ImageBuffer = vec![255u8; N];
+
+    let mut display_interface = Arc::new(Mutex::new(DisplayInterface{
         rst_pin:rst,
         dc_pin: dc,
         pwr_pin: pwr,
         busy_pin: busy,
         spi,
         delay,
-    };
+        // black_image,
+        // red_image,
+    }));
 
     let mut led_pin = PinDriver::output(peripherals.pins.gpio2).unwrap();
 
     led_pin.set_high().expect(" ");
 
-    display_interface.init();
-    display_interface.display();
+    display_interface.lock().unwrap().init();
+    // display_interface.display();
     // display_interface.clear();
 
-    display_interface.sleep();
+    // display_interface.sleep();
     
-    // let api = API::new("", "", peripherals.modem);
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    
+    let sysloop = EspSystemEventLoop::take().unwrap();
+    let timer_service = EspTaskTimerService::new().unwrap();
+    
+    let modem = peripherals.modem;
+    let ssid = "DIGIFIBRA-h4hD";
+    let password = "4R3uyNuQAh";
 
+    let mut wifi = AsyncWifi::wrap(
+        EspWifi::new(modem, sysloop.clone(), Some(EspDefaultNvsPartition::take().unwrap())).unwrap(),
+        sysloop,
+        timer_service.clone(),
+    ).unwrap();
+
+    block_on(connect_wifi(&mut wifi, ssid, password));
+
+    let ip_info = wifi.wifi().sta_netif().get_ip_info().unwrap();
+    println!("Wifi DHCP info: {:?}", ip_info);
+
+    EspPing::default().ping(ip_info.subnet.gateway, &esp_idf_svc::ping::Configuration::default()).unwrap();
+
+    let mut server = EspHttpServer::new(&Default::default()).unwrap();
+
+    server.fn_handler::<anyhow::Error, _>("/", Method::Get, move |req| {
+        req.into_ok_response().expect(" ")
+            .write_all(b"Hello world from ESP32!")?;
+        Ok(())
+    }).unwrap();
+
+    // server.fn_handler::<anyhow::Error, _>("/clear", Method::Get, move |req| {
+    //     display_interface.lock().unwrap().clear();
+    //     Ok(())
+    // }).unwrap();
+    
+    server.fn_handler::<anyhow::Error, _>("/display", Method::Post, move |mut req| {
+
+        let len = req.content_len().unwrap_or(0) as usize;
+
+        if len != N {
+            req.into_status_response(413)?
+                .write_all("Request too big".as_bytes())?;
+            return Ok(());
+        }
+
+        let mut red_image = vec![0; len];
+        req.read_exact(&mut red_image)?;
+
+        println!("Response len: {}", len);
+
+        let black_image: ImageBuffer = vec![0u8; N];
+
+        // let mut num: usize = 0usize;
+        // for _ in 0..10 {
+        //     let mut buf: ImageBuffer = vec![255u8; N];
+        //     let new_num = req.read(&mut buf).expect("TODO: panic message");
+        //     println!("Got num {}", new_num);
+        //     num += new_num;
+        // }
+
+        display_interface.lock().unwrap().display(black_image, red_image);
+
+        Ok(())
+    }).unwrap();
+
+    core::mem::forget(wifi);
+    core::mem::forget(server);
+    
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    
     led_pin.set_low().expect(" ");
     
 }

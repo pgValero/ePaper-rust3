@@ -1,10 +1,13 @@
+use std::sync::{Arc, Mutex};
 use esp_idf_svc::hal::delay::Delay;
-use esp_idf_svc::hal::gpio::{Gpio12, Gpio19, Gpio21, Gpio22, Gpio23, Input, Output, PinDriver};
+use esp_idf_svc::hal::gpio::{Gpio19, Gpio21, Gpio22, Gpio23, Input, Output, PinDriver};
 use esp_idf_svc::hal::spi::{SpiDeviceDriver, SpiDriver};
 
 const WIDTH: i32 = 800;
 const HEIGHT: i32 = 480;
-const N: usize = (HEIGHT * WIDTH / 8) as usize;
+pub const N: usize = (HEIGHT * WIDTH / 8) as usize;
+
+pub type ImageBuffer = Vec<u8>;
 
 pub struct DisplayInterface<'d> {
     pub rst_pin: PinDriver<'d, Gpio21, Output>,
@@ -12,7 +15,9 @@ pub struct DisplayInterface<'d> {
     pub pwr_pin: PinDriver<'d, Gpio23, Output>,
     pub busy_pin: PinDriver<'d, Gpio22, Input>,
     pub spi: SpiDeviceDriver<'d, SpiDriver<'d>>,
-    pub delay: Delay
+    pub delay: Delay,
+    // pub black_image: ImageBuffer,
+    // pub red_image: ImageBuffer,
 }
 
 impl<'d> DisplayInterface<'d> {
@@ -74,7 +79,7 @@ impl<'d> DisplayInterface<'d> {
         self.pwr_pin.set_low().unwrap();
     }
 
-    fn send_command(&mut self, command: u8) {
+    pub fn send_command(&mut self, command: u8) {
         self.dc_pin.set_low().unwrap();
         self.spi.write(&[command]).expect("TODO: panic message");
     }
@@ -84,18 +89,18 @@ impl<'d> DisplayInterface<'d> {
         self.spi.write(&[data]).expect("TODO: panic message");
     }
 
-    fn send_data_2(&mut self, data: Vec<u8>) {
+    fn send_data_2(&mut self, data: ImageBuffer) {
         self.dc_pin.set_high().unwrap();
+
         for b in data {
             self.spi.write(&[b]).expect("TODO: panic message");
         }
     }
 
-    fn read_busy(&mut self) {
+    pub fn read_busy(&mut self) {
         self.send_command(0x71);
         
         while self.busy_pin.is_low() {
-            println!("Busy");
             self.send_command(0x71);
             self.delay.delay_ms(200);
         }
@@ -112,47 +117,31 @@ impl<'d> DisplayInterface<'d> {
         self.exit();
     }
 
-    pub fn display(&mut self) {
-
-        let image_black: Vec<u8> = self.get_buffer();
-        let image_red: Vec<u8> = self.get_buffer();
-
+    pub fn display(&mut self, black_image: ImageBuffer, red_image: ImageBuffer) {
+        println!("{}", black_image.len());
         self.send_command(0x10);
+        self.send_data_2(black_image);
 
-        self.send_data_2(image_black);
-
+        println!("{}", red_image.len());
         self.send_command(0x13);
-        self.send_data_2(image_red);
-
+        self.send_data_2(red_image);
+    
         self.send_command(0x12);
         self.delay.delay_ms(100);
         self.read_busy();
     }
 
-    fn get_buffer(&mut self) -> Vec<u8> {
-
-        let mut buf: Vec<u8> = vec![];
-
-        for i in 0..N {
-            if i % 2 == 0 {
-                buf.push(255u8);
-            } else { buf.push(0u8); }
-        }
-
-        buf
-    }
-
-    pub(crate) fn clear(&mut self) {
-
-        let buf: Vec<u8> = vec![0x00; N];
-        let buf2: Vec<u8> = vec![0xff; N];
-
+    pub fn clear(&mut self) {
+    
+        let buf: ImageBuffer = vec![0u8; N];
+        let buf2: ImageBuffer = vec![255u8; N];
+    
         self.send_command(0x10);
         self.send_data_2(buf2);
-
+    
         self.send_command(0x13);
         self.send_data_2(buf);
-
+    
         self.send_command(0x12);
         self.delay.delay_ms(100);
         self.read_busy();
