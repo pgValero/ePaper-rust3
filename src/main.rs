@@ -88,10 +88,7 @@ fn main() {
     let busy = PinDriver::input(peripherals.pins.gpio22).unwrap();
 
     let delay: Delay = Default::default();
-
-    let black_image: ImageBuffer = vec![0u8; N];
-    let red_image: ImageBuffer = vec![255u8; N];
-
+    
     let mut display_interface = Arc::new(Mutex::new(DisplayInterface{
         rst_pin:rst,
         dc_pin: dc,
@@ -99,8 +96,6 @@ fn main() {
         busy_pin: busy,
         spi,
         delay,
-        // black_image,
-        // red_image,
     }));
 
     let mut led_pin = PinDriver::output(peripherals.pins.gpio2).unwrap();
@@ -128,7 +123,7 @@ fn main() {
         timer_service.clone(),
     ).unwrap();
 
-    block_on(connect_wifi(&mut wifi, ssid, password));
+    block_on(connect_wifi(&mut wifi, ssid, password)).expect("TODO: panic message");
 
     let ip_info = wifi.wifi().sta_netif().get_ip_info().unwrap();
     println!("Wifi DHCP info: {:?}", ip_info);
@@ -158,20 +153,12 @@ fn main() {
             return Ok(());
         }
 
-        let mut red_image = vec![0; len];
-        req.read_exact(&mut red_image)?;
+        let mut black_image = vec![0; len];
+        req.read_exact(&mut black_image)?;
 
         println!("Response len: {}", len);
 
-        let black_image: ImageBuffer = vec![0u8; N];
-
-        // let mut num: usize = 0usize;
-        // for _ in 0..10 {
-        //     let mut buf: ImageBuffer = vec![255u8; N];
-        //     let new_num = req.read(&mut buf).expect("TODO: panic message");
-        //     println!("Got num {}", new_num);
-        //     num += new_num;
-        // }
+        let red_image: ImageBuffer = vec![0u8; N];
 
         display_interface.lock().unwrap().display(black_image, red_image);
 
