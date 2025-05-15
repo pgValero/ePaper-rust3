@@ -4,7 +4,7 @@ mod display_interface;
 use std::sync::{Arc, Mutex};
 use display_interface::DisplayInterface;
 use esp_idf_svc::hal::delay::Delay;
-use esp_idf_svc::hal::gpio::{Gpio12, Gpio15, PinDriver};
+use esp_idf_svc::hal::gpio::{AnyInputPin, AnyOutputPin, Gpio12, Gpio15, PinDriver};
 use esp_idf_svc::hal::prelude::Peripherals;
 use esp_idf_svc::hal::spi::config::{Config, DriverConfig};
 use esp_idf_svc::hal::spi::SpiDeviceDriver;
@@ -19,7 +19,7 @@ use esp_idf_svc::ping::EspPing;
 use esp_idf_svc::timer::EspTaskTimerService;
 use esp_idf_svc::wifi::{AsyncWifi, AuthMethod, ClientConfiguration, Configuration, EspWifi, PmfConfiguration, ScanMethod};
 use log::info;
-use crate::display_interface::{ImageBuffer, N};
+use crate::display_interface::{ImageBuffer};
 
 async fn connect_wifi(wifi: &mut AsyncWifi<EspWifi<'static>>, ssid: &str, password: &str) -> anyhow::Result<()> {
     let wifi_configuration: Configuration = Configuration::Client(ClientConfiguration{
@@ -63,40 +63,32 @@ fn main() {
     let spi = peripherals.spi2;
 
     let sclk = peripherals.pins.gpio14;
-    let sdo = peripherals.pins.gpio13;
-    let sdi: Option<Gpio12> = None;
-    let cs: Option<Gpio15> = Some(peripherals.pins.gpio15);
-
-    let bus_config = DriverConfig::default();
-    let config = Config::default();
-
-
-    let mut spi = SpiDeviceDriver::new_single(
-        spi,
-        sclk,
-        sdo,
-        sdi,
-        cs,
-        &bus_config,
-        &config,
-    ).unwrap();
-
-    let rst = PinDriver::output(peripherals.pins.gpio21).unwrap();
-    let dc = PinDriver::output(peripherals.pins.gpio19).unwrap();
-    let pwr = PinDriver::output(peripherals.pins.gpio23).unwrap();
+    let mosi = peripherals.pins.gpio13;
+    let cs = peripherals.pins.gpio15;
     
-    let busy = PinDriver::input(peripherals.pins.gpio22).unwrap();
-
-    let delay: Delay = Default::default();
+    let rst = AnyOutputPin::from(peripherals.pins.gpio21);
+    let dc = AnyOutputPin::from(peripherals.pins.gpio19);
+    let pwr = AnyOutputPin::from(peripherals.pins.gpio23);
     
-    let mut display_interface = Arc::new(Mutex::new(DisplayInterface{
-        rst_pin:rst,
-        dc_pin: dc,
-        pwr_pin: pwr,
-        busy_pin: busy,
-        spi,
-        delay,
-    }));
+    let busy = AnyInputPin::from(peripherals.pins.gpio22);
+    
+    let width = 800usize;
+    let height = 480usize;
+    
+    let mut display_interface = Arc::new(Mutex::new(
+        DisplayInterface::new(
+            width,
+            height,
+            spi,
+            rst,
+            dc,
+            pwr,
+            busy,
+            sclk,
+            mosi,
+            cs,
+        ).unwrap()
+    ));
 
     let mut led_pin = PinDriver::output(peripherals.pins.gpio2).unwrap();
 
@@ -146,6 +138,7 @@ fn main() {
     server.fn_handler::<anyhow::Error, _>("/display", Method::Post, move |mut req| {
 
         let len = req.content_len().unwrap_or(0) as usize;
+        let N = display_interface.lock().unwrap().buffer_size.clone();
 
         if len != N {
             req.into_status_response(413)?

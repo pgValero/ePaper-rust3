@@ -4,6 +4,10 @@ from requests import request
 
 URL = "http://192.168.1.139/"
 
+response = request("GET", URL)
+print(response.text)
+
+
 WIDTH = 800
 HEIGHT = 480
 
