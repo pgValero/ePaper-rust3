@@ -1,18 +1,18 @@
-use embedded_svc::http::Headers;
 mod display_interface;
 mod wifi;
 
 use std::sync::{Arc, Mutex};
+use embedded_svc::http::server::Request;
+use embedded_svc::http::Headers;
 use display_interface::DisplayInterface;
 use esp_idf_svc::hal::gpio::{AnyInputPin, AnyOutputPin, PinDriver};
 use esp_idf_svc::hal::prelude::Peripherals;
 
 use esp_idf_svc::http::Method;
-use esp_idf_svc::http::server::EspHttpServer;
+use esp_idf_svc::http::server::{EspHttpConnection, EspHttpServer};
 use esp_idf_svc::io::{Read, Write};
 use display_interface::{ImageBuffer};
 use wifi::connect_wifi;
-
 
 fn main() {
     esp_idf_svc::log::EspLogger::initialize_default();
@@ -53,10 +53,8 @@ fn main() {
 
     led_pin.set_high().expect(" ");
 
-    display_interface.lock().unwrap().init().expect("Error initializing display_interface.");
-    display_interface.lock().unwrap().clear().expect("Error cleaning the display.");
-
-    // display_interface.lock().unwrap().sleep().expect("TODO: panic message");
+    display_interface.lock().unwrap().init().expect("Error initializing display.");
+    display_interface.lock().unwrap().sleep().expect("Error sleeping down display.");
 
     let modem = peripherals.modem;
     let ssid = "DIGIFIBRA-h4hD";
@@ -66,47 +64,60 @@ fn main() {
 
     let mut server = EspHttpServer::new(&Default::default()).unwrap();
 
-    server.fn_handler::<anyhow::Error, _>("/", Method::Get, move |req| {
-        req.into_ok_response().expect(" ")
-            .write_all(b"Hello world from ESP32!")?;
-        Ok(())
-    }).unwrap();
-
-    // server.fn_handler::<anyhow::Error, _>("/clear", Method::Get, move |req| {
-    //     display_interface.lock().unwrap().clear();
-    //     Ok(())
-    // }).unwrap();
-    
-    server.fn_handler::<anyhow::Error, _>("/display", Method::Post, move |mut req| {
-
+    let display_function = move |mut request: Request<&mut EspHttpConnection>| -> Result<(), anyhow::Error> {
         println!("Printing image...");
-
-        let len = req.content_len().unwrap_or(0) as usize;
+    
+        let len = request.content_len().unwrap_or(0) as usize;
         let buffer_size = display_interface.lock().unwrap().buffer_size;
-
+        
         if len != buffer_size {
-            req.into_status_response(413)?
+            request.into_status_response(413)?
                 .write_all("Request too big".as_bytes())?;
             return Ok(());
         }
-
+        
         let mut black_image = vec![0; len];
-        req.read_exact(&mut black_image)?;
-
-
+        request.read_exact(&mut black_image)?;
+        
+        
         let red_image: ImageBuffer = vec![0u8; buffer_size];
-
+        
+        display_interface.lock().unwrap().init().expect("Error initializing display.");
         display_interface.lock().unwrap().display(black_image, red_image).expect("Error displaying image.");
-        // display_interface.lock().unwrap().sleep().expect("TODO: panic message");
-
+        display_interface.lock().unwrap().sleep().expect("Error sleeping down display.");
+    
         println!("Finished");
-
+    
         Ok(())
-    }).unwrap();
+    };
+    
+    // let clear_function = move |mut request: Request<&mut EspHttpConnection>| -> Result<(), anyhow::Error> {
+    //     println!("Clearing image...");
+    //     
+    //     display_interface.lock().unwrap().init().expect("Error initializing display.");
+    //     display_interface.lock().unwrap().clear().expect("Error clearing image.");
+    //     display_interface.lock().unwrap().sleep().expect("Error sleeping down display.");
+    // 
+    //     println!("Finished");
+    // 
+    //     Ok(())
+    // };
+    
+    
+    server.fn_handler::<anyhow::Error, _>("/", Method::Get, hello_function).unwrap();
+    
+    // server.fn_handler::<anyhow::Error, _>("/clear", Method::Get, clear_function).unwrap();
+    
+    server.fn_handler::<anyhow::Error, _>("/display", Method::Post, display_function).unwrap();
 
     core::mem::forget(wifi);
     core::mem::forget(server);
 
     led_pin.set_low().expect(" ");
     
+}
+
+fn hello_function(request: Request<&mut EspHttpConnection>) -> Result<(), anyhow::Error> {
+    request.into_ok_response()?.write_all(b"Hello world from ESP32!")?;
+    Ok(())
 }

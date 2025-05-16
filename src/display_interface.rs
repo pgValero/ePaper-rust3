@@ -1,8 +1,9 @@
 use esp_idf_svc::hal::delay::Delay;
-use esp_idf_svc::hal::gpio::{AnyInputPin, AnyOutputPin, Gpio12, Gpio15, Input, InputPin, Output, OutputPin, PinDriver};
+use esp_idf_svc::hal::gpio::{AnyInputPin, AnyOutputPin, Input, Output, OutputPin, PinDriver};
 use esp_idf_svc::hal::peripheral::Peripheral;
-use esp_idf_svc::hal::spi::{Spi, SpiAnyPins, SpiDeviceDriver, SpiDriver, SPI2};
-use esp_idf_svc::hal::spi::config::{Config, DriverConfig};
+use esp_idf_svc::hal::spi::{SpiDeviceDriver, SpiDriver, SPI2};
+use esp_idf_svc::hal::spi::config::DriverConfig;
+use esp_idf_svc::hal::spi::config::Config as SpiConfig;
 
 pub type ImageBuffer = Vec<u8>;
 type CustomError = anyhow::Error;
@@ -36,7 +37,7 @@ impl<'d> DisplayInterface<'d> {
         let cs = Some(cs);
 
         let bus_config = DriverConfig::default();
-        let config = Config::default();
+        let config = SpiConfig::default();
 
         let delay: Delay = Default::default();
 
