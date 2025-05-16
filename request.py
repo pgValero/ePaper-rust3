@@ -4,10 +4,6 @@ from requests import request
 
 URL = "http://192.168.1.139/"
 
-response = request("GET", URL)
-print(response.text)
-
-
 WIDTH = 800
 HEIGHT = 480
 
@@ -28,6 +24,5 @@ buf = bytearray(image.convert('1').tobytes('raw'))
 
 # data = ("a" * 48_000)
 
-
 response = request("POST", URL + "display", data=buf)
-print("Text:", response.text)
+print(response.text)

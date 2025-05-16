@@ -1,9 +1,9 @@
 use esp_idf_svc::hal::delay::Delay;
 use esp_idf_svc::hal::gpio::{AnyInputPin, AnyOutputPin, Input, Output, OutputPin, PinDriver};
 use esp_idf_svc::hal::peripheral::Peripheral;
-use esp_idf_svc::hal::spi::{SpiDeviceDriver, SpiDriver, SPI2};
-use esp_idf_svc::hal::spi::config::DriverConfig;
 use esp_idf_svc::hal::spi::config::Config as SpiConfig;
+use esp_idf_svc::hal::spi::config::DriverConfig;
+use esp_idf_svc::hal::spi::{SpiDeviceDriver, SpiDriver, SPI2};
 
 pub type ImageBuffer = Vec<u8>;
 type CustomError = anyhow::Error;
@@ -30,8 +30,7 @@ impl<'d> DisplayInterface<'d> {
         sclk: impl Peripheral<P = impl OutputPin> + 'd,
         mosi: impl Peripheral<P = impl OutputPin> + 'd,
         cs: impl Peripheral<P = impl OutputPin> + 'd,
-    ) -> Result<Self, CustomError>{
-        
+    ) -> Result<Self, CustomError> {
         let sdo = mosi;
         let sdi: Option<AnyInputPin> = None;
         let cs = Some(cs);
@@ -41,17 +40,9 @@ impl<'d> DisplayInterface<'d> {
 
         let delay: Delay = Default::default();
 
-        let spi = SpiDeviceDriver::new_single(
-            spi,
-            sclk,
-            sdo,
-            sdi,
-            cs,
-            &bus_config,
-            &config,
-        )?;
-        
-        Ok(DisplayInterface{
+        let spi = SpiDeviceDriver::new_single(spi, sclk, sdo, sdi, cs, &bus_config, &config)?;
+
+        Ok(DisplayInterface {
             buffer_size: width * height / 8,
             rst_pin: PinDriver::output(rst)?,
             dc_pin: PinDriver::output(dc)?,
@@ -61,9 +52,8 @@ impl<'d> DisplayInterface<'d> {
             delay,
         })
     }
-    
-    pub fn init(&mut self) -> Result<(), CustomError> {
 
+    pub fn init(&mut self) -> Result<(), CustomError> {
         self.pwr_pin.set_high()?;
         self.reset();
 
@@ -143,7 +133,7 @@ impl<'d> DisplayInterface<'d> {
 
     pub fn read_busy(&mut self) -> Result<(), CustomError> {
         self.send_command(0x71)?;
-        
+
         while self.busy_pin.is_low() {
             self.send_command(0x71)?;
             self.delay.delay_ms(200);
@@ -163,14 +153,17 @@ impl<'d> DisplayInterface<'d> {
         Ok(())
     }
 
-    pub fn display(&mut self, black_image: ImageBuffer, red_image: ImageBuffer) -> Result<(), CustomError> {
-        
+    pub fn display(
+        &mut self,
+        black_image: ImageBuffer,
+        red_image: ImageBuffer,
+    ) -> Result<(), CustomError> {
         self.send_command(0x10)?;
         self.send_data_2(black_image)?;
-        
+
         self.send_command(0x13)?;
         self.send_data_2(red_image)?;
-    
+
         self.send_command(0x12)?;
         self.delay.delay_ms(100);
         self.read_busy()?;
@@ -178,12 +171,10 @@ impl<'d> DisplayInterface<'d> {
     }
 
     pub fn clear(&mut self) -> Result<(), CustomError> {
-
         let black_image: ImageBuffer = vec![255u8; self.buffer_size];
         let red_image: ImageBuffer = vec![0u8; self.buffer_size];
-        
+
         self.display(black_image, red_image)?;
         Ok(())
     }
-
 }
