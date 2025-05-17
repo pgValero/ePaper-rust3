@@ -60,20 +60,20 @@ fn main() {
         move |mut request: Request<&mut EspHttpConnection>| -> Result<(), anyhow::Error> {
             led_pin.lock().unwrap().set_high()?;
 
-            let len = request.content_len().unwrap_or(0) as usize;
+            let len = request.content_len().unwrap() as usize;
             let buffer_size = display_interface.lock().unwrap().buffer_size;
 
-            if len != buffer_size {
+            if len != buffer_size*2 {
                 request
                     .into_status_response(413)?
                     .write_all("Request too big".as_bytes())?;
                 return Ok(());
             }
 
-            let mut black_image = vec![0; len];
-            request.read_exact(&mut black_image)?;
-
-            let red_image: ImageBuffer = vec![0u8; buffer_size];
+            let mut buffer = vec![0; len];
+            request.read_exact(&mut buffer)?;
+            
+            println!("Request received: {}", buffer.len());
 
             display_interface
                 .lock()
@@ -83,7 +83,7 @@ fn main() {
             display_interface
                 .lock()
                 .unwrap()
-                .display(black_image, red_image)
+                .display(buffer)
                 .expect("Error displaying image.");
             display_interface
                 .lock()

@@ -122,12 +122,9 @@ impl<'d> DisplayInterface<'d> {
         Ok(())
     }
 
-    fn send_data_2(&mut self, data: ImageBuffer) -> Result<(), CustomError> {
+    fn send_data_2(&mut self, data: &[u8]) -> Result<(), CustomError> {
         self.dc_pin.set_high()?;
-
-        for b in data {
-            self.spi.write(&[b])?;
-        }
+        self.spi.write(data)?;
         Ok(())
     }
 
@@ -153,11 +150,14 @@ impl<'d> DisplayInterface<'d> {
         Ok(())
     }
 
-    pub fn display(
-        &mut self,
-        black_image: ImageBuffer,
-        red_image: ImageBuffer,
-    ) -> Result<(), CustomError> {
+    pub fn display(&mut self, buffer: ImageBuffer) -> Result<(), CustomError> {
+        
+        let black_image = &buffer[..self.buffer_size];
+        println!("Black image: {:?}", black_image.len());
+        
+        let red_image = &buffer[self.buffer_size..];
+        println!("Red image: {:?}", red_image.len());
+        
         self.send_command(0x10)?;
         self.send_data_2(black_image)?;
 
@@ -170,11 +170,11 @@ impl<'d> DisplayInterface<'d> {
         Ok(())
     }
 
-    pub fn clear(&mut self) -> Result<(), CustomError> {
-        let black_image: ImageBuffer = vec![255u8; self.buffer_size];
-        let red_image: ImageBuffer = vec![0u8; self.buffer_size];
-
-        self.display(black_image, red_image)?;
-        Ok(())
-    }
+    // pub fn clear(&mut self) -> Result<(), CustomError> {
+    //     let black_image: ImageBuffer = vec![255u8; self.buffer_size];
+    //     let red_image: ImageBuffer = vec![0u8; self.buffer_size];
+    // 
+    //     self.display(black_image, red_image)?;
+    //     Ok(())
+    // }
 }
