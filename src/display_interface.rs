@@ -170,11 +170,13 @@ impl<'d> DisplayInterface<'d> {
         Ok(())
     }
 
-    // pub fn clear(&mut self) -> Result<(), CustomError> {
-    //     let black_image: ImageBuffer = vec![255u8; self.buffer_size];
-    //     let red_image: ImageBuffer = vec![0u8; self.buffer_size];
-    // 
-    //     self.display(black_image, red_image)?;
-    //     Ok(())
-    // }
+    pub fn clear(&mut self) -> Result<(), CustomError> {
+        let buffer = vec![255u8; self.buffer_size*2];
+        // let red_image = [0u8; self.buffer_size];
+        
+        // let buffer: ImageBuffer = [&black_image[..], &red_image[..]].concat();
+    
+        self.display(buffer)?;
+        Ok(())
+    }
 }

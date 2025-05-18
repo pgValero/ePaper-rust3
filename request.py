@@ -7,15 +7,15 @@ URL = "http://192.168.1.139/"
 WIDTH = 800
 HEIGHT = 480
 
-image = Image.open('image.png')
-
-if image.size[0] == WIDTH and image.size[1] == HEIGHT:
-    image = image.rotate(90, expand=True)
-
-elif image.size[0] != WIDTH or image.size[1] != HEIGHT:
-    image = ImageOps.pad(image=image, size=(WIDTH, HEIGHT), color="white")
-
-buf = bytearray(image.convert('1').tobytes('raw'))
+# image = Image.open('image.png')
+#
+# if image.size[0] == WIDTH and image.size[1] == HEIGHT:
+#     image = image.rotate(90, expand=True)
+#
+# elif image.size[0] != WIDTH or image.size[1] != HEIGHT:
+#     image = ImageOps.pad(image=image, size=(WIDTH, HEIGHT), color="white")
+#
+# buf = bytearray(image.convert('1').tobytes('raw'))
 
 # The bytes need to be inverted, because in the PIL world 0=black and 1=white, but
 # in the e-paper world 0=white and 1=black.
@@ -24,5 +24,5 @@ buf = bytearray(image.convert('1').tobytes('raw'))
 
 # data = ("a" * 48_000)
 
-response = request("POST", URL + "display", data=buf)
+response = request("GET", URL + "clear",)
 print(response.text)

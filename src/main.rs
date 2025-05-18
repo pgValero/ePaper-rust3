@@ -55,13 +55,22 @@ fn main() {
     let wifi = connect_wifi(modem, ssid, password).expect("Error connecting Wifi.");
 
     let mut server = EspHttpServer::new(&Default::default()).unwrap();
+    
+    let display_interface_p = Arc::clone(&display_interface);
+    let display_interface_k = Arc::clone(&display_interface);
+    
+    let led_1 = Arc::clone(&led_pin);
+    let led_2 = Arc::clone(&led_pin);
 
     let display_function =
         move |mut request: Request<&mut EspHttpConnection>| -> Result<(), anyhow::Error> {
-            led_pin.lock().unwrap().set_high()?;
+            let mut led = led_1.lock().unwrap();
+            led.set_high()?;
+            
+            let mut di = display_interface_p.lock().unwrap();
 
             let len = request.content_len().unwrap() as usize;
-            let buffer_size = display_interface.lock().unwrap().buffer_size;
+            let buffer_size = di.buffer_size;
 
             if len != buffer_size*2 {
                 request
@@ -75,31 +84,50 @@ fn main() {
             
             println!("Request received: {}", buffer.len());
 
-            display_interface
-                .lock()
-                .unwrap()
+            di
                 .init()
                 .expect("Error initializing display.");
-            display_interface
-                .lock()
-                .unwrap()
+            di
                 .display(buffer)
                 .expect("Error displaying image.");
-            display_interface
-                .lock()
-                .unwrap()
+            di
                 .sleep()
                 .expect("Error sleeping down display.");
-
-            led_pin.lock().unwrap().set_low()?;
-
+            
             request.into_ok_response()?.write_all(b"Image displayed.")?;
+            // drop(di);
+            led.set_low()?;
+            Ok(())
+        };
 
+    let clear_function =
+        move |request: Request<&mut EspHttpConnection>| -> Result<(), anyhow::Error> {
+            let mut led = led_2.lock().unwrap();
+            led.set_high()?;
+
+            let mut di = display_interface_k.lock().unwrap();
+            
+            di
+                .init()
+                .expect("Error initializing display.");
+            di
+                .clear()
+                .expect("Error displaying image.");
+            di
+                .sleep()
+                .expect("Error sleeping down display.");
+            
+            request.into_ok_response()?.write_all(b"Image displayed.")?;
+            led.set_low()?;
             Ok(())
         };
 
     server
         .fn_handler::<anyhow::Error, _>("/display", Method::Post, display_function)
+        .unwrap();
+
+    server
+        .fn_handler::<anyhow::Error, _>("/clear", Method::Get, clear_function)
         .unwrap();
 
     core::mem::forget(wifi);
